@@ -5,12 +5,31 @@ I mean, this thing *is really rough*.
 """
 
 import xml.etree.ElementTree as ET
+from html import escape as hte
 
 
 class TalendSchema:
 
-    def _bool_to_text(self, b_val):
-        str(b_val).lower()
+    def _attr_prep(self, key, value):
+        if not isinstance(value, str):
+            value = str(value)
+
+        if key in self.attr_bool:
+            return {key: str(value).lower()}
+
+        if key == 'label':
+            return {
+                'label': hte(value),
+                'originalDbColumnName': hte(value)
+            }
+
+        if key == 'length':
+            return {
+                'length': hte(value),
+                'originalLength': hte(value)
+            }
+
+        return {key: hte(value)}
 
     def __init__(self):
         self.header = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -40,17 +59,41 @@ class TalendSchema:
             'default': '',
             'key': False,
             'label': 'newColumn',
-            'length': '-1',
+            'length': -1,
             'nullable': True,
-            'originalDbColumnName': 'newColumn',
-            'originalLength': '-1',
             'pattern': '',
-            'precision': '-1'
+            'precision': -1,
+            'type': '',
         }
 
-        self.attr_special = {  # Do things
-            'key': _
-        }
+        self.attr_bool = [
+            'key',
+            'nullable'
+        ]
 
-    def add_column(self, **properties):
+    def add_column(self, talendType, **properties):
+        local_attrs = {'talendType': self.type_map[talendType]}
 
+        for key in self.attrs.keys():
+            if key not in properties:
+                raw_value = self.attrs[key]
+            else:
+                raw_value = properties[key]
+
+            d = self._attr_prep(key, raw_value)
+
+            local_attrs = {
+                **local_attrs,
+                **d
+            }
+
+        ET.SubElement(self.schema, 'column', attrib=local_attrs)
+
+    def dump_schema(self):
+        print(self.header)
+        ET.dump(self.schema)
+
+    def write_schema(self, filename):
+        with open(filename, 'w') as sf:
+            sf.write(self.header)
+            sf.write(ET.tostring(self.schema, encoding='unicode'))
