@@ -6,35 +6,16 @@ I mean, this thing *is really rough*.
 
 import xml.etree.ElementTree as ET
 from html import escape as hte
+from orderedset import OrderedSet
 
 
 class TalendSchema:
 
-    def _attr_prep(self, key, value):
-        if not isinstance(value, str):
-            value = str(value)
-
-        if key in self.attr_bool:
-            return {key: str(value).lower()}
-
-        if key == 'label':
-            return {
-                'label': hte(value),
-                'originalDbColumnName': hte(value)
-            }
-
-        if key == 'length':
-            return {
-                'length': hte(value),
-                'originalLength': hte(value)
-            }
-
-        return {key: hte(value)}
-
     def __init__(self):
         self.header = '<?xml version="1.0" encoding="UTF-8"?>'
-        self.schema = ET.Element('schema')
-        self.columns = []
+        self.schema_key = 'schema'  # ET.Element('schema')
+        self.column_data = {}
+        self.columns = OrderedSet()
 
         self.type_map = {
             'boolean': 'id_Boolean',
@@ -58,7 +39,6 @@ class TalendSchema:
             'comment': '',
             'default': '',
             'key': False,
-            'label': 'newColumn',
             'length': -1,
             'nullable': True,
             'pattern': '',
@@ -71,8 +51,33 @@ class TalendSchema:
             'nullable'
         ]
 
-    def add_column(self, talendType, **properties):
-        local_attrs = {'talendType': self.type_map[talendType]}
+    def _attr_prep(self, key, value):
+        if not isinstance(value, str):
+            value = str(value)
+
+        if key in self.attr_bool:
+            return {key: str(value).lower()}
+
+        if key == 'label':
+            return {
+                'label': hte(value),
+                'originalDbColumnName': hte(value)
+            }
+
+        if key == 'length':
+            return {
+                'length': hte(value),
+                'originalLength': hte(value)
+            }
+
+        return {key: hte(value)}
+
+    def add_column(self, column_type, label, **properties):
+        local_attrs = {
+            'talendType': self.type_map[column_type],
+            'label': label,
+            'originalDbColumnName': label,
+        }
 
         for key in self.attrs.keys():
             if key not in properties:
@@ -87,13 +92,29 @@ class TalendSchema:
                 **d
             }
 
-        ET.SubElement(self.schema, 'column', attrib=local_attrs)
+        self.column_data[label] = local_attrs
+        self.columns.add(label)
 
     def dump_schema(self):
         print(self.header)
-        ET.dump(self.schema)
+        ET.dump(self.generate_schema())
+
+    def generate_schema(self):
+        schema = ET.Element(self.schema_key)
+
+        for column in self.columns:
+            ET.SubElement(schema, 'column', attrib=self.column_data[column])
+
+        return schema
+
+    def remove_column(self, label):
+        try:
+            self.columns.remove(label)
+            self.column_data.pop(label)
+        except:
+            pass  # If it doesn't exist, so what?
 
     def write_schema(self, filename):
         with open(filename, 'w') as sf:
             sf.write(self.header)
-            sf.write(ET.tostring(self.schema, encoding='unicode'))
+            sf.write(ET.tostring(self.generate_schema(), encoding='unicode'))
